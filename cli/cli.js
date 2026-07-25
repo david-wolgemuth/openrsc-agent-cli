@@ -4,6 +4,7 @@ const { runSource } = require('./socketClient');
 
 const DEFAULT_HOST = process.env.ARC_HOST || '127.0.0.1';
 const DEFAULT_PORT = Number(process.env.ARC_PORT || 8765);
+const DEFAULT_TIMEOUT_MS = Number(process.env.IRSC_TIMEOUT_MS || 10000);
 
 function usage() {
   return [
@@ -15,6 +16,7 @@ function usage() {
     'Options:',
     '  --host <host>  Bridge host (default: 127.0.0.1)',
     '  --port <port>  Bridge port (default: 8765)',
+    '  --timeout <ms> Request timeout (default: 10000)',
   ].join('\n');
 }
 
@@ -29,6 +31,7 @@ function parseRunArgs(args) {
   let sourcePath;
   let host = DEFAULT_HOST;
   let port = DEFAULT_PORT;
+  let timeoutMs = DEFAULT_TIMEOUT_MS;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -42,6 +45,9 @@ function parseRunArgs(args) {
     } else if (arg === '--port') {
       port = Number(args[++index]);
       if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: '--port requires a valid port' };
+    } else if (arg === '--timeout') {
+      timeoutMs = Number(args[++index]);
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 1) return { error: '--timeout requires a positive number of milliseconds' };
     } else if (arg.startsWith('-')) {
       return { error: `unknown option: ${arg}` };
     } else if (source !== undefined || sourcePath !== undefined) {
@@ -59,7 +65,7 @@ function parseRunArgs(args) {
       return { error: `could not read ${sourcePath}: ${error.message}` };
     }
   }
-  return { source, host, port };
+  return { source, host, port, timeoutMs };
 }
 
 async function run(args) {
@@ -67,7 +73,11 @@ async function run(args) {
   if (parsed.error) return fail(parsed.error);
 
   try {
-    const response = await runSource(parsed.source, { host: parsed.host, port: parsed.port });
+    const response = await runSource(parsed.source, {
+      host: parsed.host,
+      port: parsed.port,
+      timeoutMs: parsed.timeoutMs,
+    });
     console.log(JSON.stringify(response));
     if (!response.ok) process.exitCode = 1;
   } catch (error) {
