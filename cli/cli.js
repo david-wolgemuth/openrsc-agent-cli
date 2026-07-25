@@ -10,6 +10,7 @@ function usage() {
     'Usage:',
     '  ./irsc run -c "javascript source"',
     '  ./irsc run <script.js>',
+    '  ./irsc inspect',
     '',
     'Options:',
     '  --host <host>  Bridge host (default: 127.0.0.1)',
@@ -82,6 +83,7 @@ async function main(args) {
   }
   const [command, ...commandArgs] = args;
   if (command === 'run') return run(commandArgs);
+  if (command === 'inspect') return run(['scripts/inspect.js', ...commandArgs]);
   return fail(`unknown command: ${command}`);
 }
 
