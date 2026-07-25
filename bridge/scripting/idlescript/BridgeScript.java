@@ -19,11 +19,26 @@ public class BridgeScript extends IdleScript {
       try {
         server = new ScriptServer(controller, DEFAULT_PORT);
         server.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown, "idlersc-bridge-shutdown"));
         controller.log("idlersc-bridge: listening on 127.0.0.1:" + DEFAULT_PORT, "yel");
       } catch (Exception exception) {
         controller.log("idlersc-bridge: server failed: " + exception.getMessage(), "red");
       }
     }
     return 1000;
+  }
+
+  private void shutdown() {
+    try {
+      if (controller != null && controller.isLoggedIn()) {
+        controller.setAutoLogin(false);
+        controller.logout();
+        controller.log("idlersc-bridge: logout requested during shutdown", "yel");
+      }
+    } catch (Throwable exception) {
+      // Shutdown is best-effort; do not prevent the JVM from exiting.
+      System.err.println("idlersc-bridge: shutdown logout failed: " + exception.getMessage());
+    }
+    if (server != null) server.close();
   }
 }

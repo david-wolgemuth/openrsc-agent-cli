@@ -24,7 +24,7 @@ EXCLUDE_FILE  := $(SUBMODULE_GIT_DIR)/info/exclude
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check install-jdk setup build run test-bridge clean-link
+.PHONY: help check install-jdk setup build run test-bridge test-js clean-link
 
 help: ## Show available root-project commands
 	@awk 'BEGIN {FS = ":.*##"; print "Usage: make <target>"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -124,6 +124,13 @@ test-bridge: ## Send a one-frame echo request to the running bridge server
 	@printf '%s\n' '{"op":"ping"}' | nc -w 3 "$(BRIDGE_HOST)" "$(BRIDGE_PORT)" | \
 		rg -Fx '{"op":"ping"}' || { echo "ERROR: no matching echo response from $(BRIDGE_HOST):$(BRIDGE_PORT)" >&2; exit 1; }
 	@echo "Bridge echo test passed on $(BRIDGE_HOST):$(BRIDGE_PORT)"
+
+test-js: ## Run a small Nashorn JavaScript smoke test through the running bridge
+	@command -v nc >/dev/null 2>&1 || { echo "ERROR: nc is required for test-js" >&2; exit 1; }
+	@source_b64="$$(printf '%s' 'console.log("js-smoke-test"); 1 + 1;' | base64 -w 0)"; \
+		printf '{"op":"run","source_b64":"%s"}\n' "$$source_b64" | nc -w 5 "$(BRIDGE_HOST)" "$(BRIDGE_PORT)" | \
+		rg -F '"ok":true' || { echo "ERROR: JavaScript smoke test failed on $(BRIDGE_HOST):$(BRIDGE_PORT)" >&2; exit 1; }
+	@echo "JavaScript smoke test passed on $(BRIDGE_HOST):$(BRIDGE_PORT)"
 
 clean-link: ## Remove only the generated bridge symlink
 	@if test -L "$(BRIDGE_LINK)"; then rm "$(BRIDGE_LINK)"; echo "Removed $(BRIDGE_LINK)"; else echo "No generated bridge symlink at $(BRIDGE_LINK)"; fi

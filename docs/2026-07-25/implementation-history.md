@@ -281,6 +281,29 @@ login response `4` has not reached the script thread, so the echo test must be
 performed only after a successful login; the server is not expected to bind
 while IdleRSC is stuck retrying authentication.
 
+## JavaScript execution begins
+
+The next slice uses Nashorn, which is bundled with the required Java 8 runtime;
+no JavaScript engine was present in IdleRSC's external dependencies. The
+bridge now accepts a `run` frame containing base64-encoded source, creates a
+fresh Nashorn engine in `ScriptWorker`, and exposes only the explicit
+`controller` and `console.log` bindings for this smoke-test phase. Results and
+errors are returned as small JSON responses. `make test-js` exercises
+`console.log("js-smoke-test"); 1 + 1;` through the live socket.
+
+This is intentionally not the full worker contract yet: there is no job ID,
+status endpoint, timeout, or cancellation. Those require separate tests after
+basic JavaScript execution is proven.
+
+## Shutdown behavior
+
+Inspection of the pinned IdleRSC source showed that its JVM shutdown hook only
+force-stops batching; it does not send a logout packet. The bridge therefore
+registers its own best-effort shutdown hook. It disables auto-login, calls
+`Controller.logout()`, and closes the loopback server socket. IdleRSC documents
+that logout is not guaranteed during shutdown, so this reduces stale sessions
+but does not replace the server's normal session timeout.
+
 ## Architecture constraints that remain
 
 The planned dynamic JavaScript worker cannot yet be implemented from the

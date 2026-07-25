@@ -33,6 +33,14 @@ public final class ScriptServer implements Runnable {
     thread.start();
   }
 
+  public void close() {
+    try {
+      serverSocket.close();
+    } catch (IOException exception) {
+      controller.log("idlersc-bridge: server close failed: " + exception.getMessage(), "red");
+    }
+  }
+
   @Override
   public void run() {
     try {
@@ -54,7 +62,20 @@ public final class ScriptServer implements Runnable {
         PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
       String frame = reader.readLine();
       if (frame != null) {
-        writer.println(Protocol.echo(frame));
+        try {
+          Protocol.Request request = Protocol.parse(frame);
+          if ("run".equals(request.getOperation())) {
+            ScriptWorker worker = new ScriptWorker(controller, request.getSource());
+            worker.start();
+            worker.join();
+            if (worker.getError() != null) writer.println(Protocol.error(worker.getError()));
+            else writer.println(Protocol.success(worker.getResult()));
+          } else {
+            writer.println(Protocol.error(new IllegalArgumentException("unknown operation")));
+          }
+        } catch (Exception exception) {
+          writer.println(Protocol.error(exception));
+        }
       }
     } catch (IOException exception) {
       controller.log("idlersc-bridge: client failed: " + exception.getMessage(), "red");
