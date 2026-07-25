@@ -8,8 +8,8 @@ const DEFAULT_PORT = Number(process.env.ARC_PORT || 8765);
 function usage() {
   return [
     'Usage:',
-    '  ./arc run -c "javascript source"',
-    '  ./arc run <script.js>',
+    '  ./irsc run -c "javascript source"',
+    '  ./irsc run <script.js>',
     '',
     'Options:',
     '  --host <host>  Bridge host (default: 127.0.0.1)',
@@ -18,7 +18,7 @@ function usage() {
 }
 
 function fail(message) {
-  console.error(`arc: ${message}`);
+  console.error(`irsc: ${message}`);
   console.error(usage());
   process.exitCode = 2;
 }
@@ -70,7 +70,7 @@ async function run(args) {
     console.log(JSON.stringify(response));
     if (!response.ok) process.exitCode = 1;
   } catch (error) {
-    console.error(`arc: ${error.message}`);
+    console.error(`irsc: ${error.message}`);
     process.exitCode = 1;
   }
 }

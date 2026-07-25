@@ -306,14 +306,15 @@ registers its own best-effort shutdown hook. It disables auto-login, calls
 that logout is not guaranteed during shutdown, so this reduces stale sessions
 but does not replace the server's normal session timeout.
 
-## `arc` command-line entry point
+## `irsc` command-line entry point
 
-The original agent-facing CLI concept was given the project name `arc`, for
-“auto-rune-scape”. The repository now has an executable root-level Node entry
+The first temporary CLI name, `arc`, was discarded because it does not match
+the project name. The canonical command is now `irsc`, directly echoing
+IdleRSC. The repository has an executable root-level Node entry
 point and keeps its implementation details under `cli/`:
 
 ```text
-./arc                 # executable shebang entry point
+./irsc                # executable shebang entry point
 cli/cli.js            # command parsing and run command
 cli/socketClient.js   # newline-framed loopback client
 scripts/hello.js      # example JavaScript bot script
@@ -322,8 +323,8 @@ scripts/hello.js      # example JavaScript bot script
 The first supported forms are:
 
 ```text
-./arc run -c '1 + 1'
-./arc run scripts/hello.js
+./irsc run -c '1 + 1'
+./irsc run scripts/hello.js
 ```
 
 The CLI has no npm dependency yet. It reads one source string or one local
@@ -335,17 +336,17 @@ Nashorn error and exit code 1.
 
 The `scripts/` directory is the intended home for agent- and user-authored
 JavaScript. Future curated wrappers around the raw Java bindings belong under
-that area, while `cli/` remains implementation code for `./arc`.
+that area, while `cli/` remains implementation code for `./irsc`.
 
 ## Disconnect behavior and remaining runtime work
 
 The current server handles a request synchronously: it starts a worker and
-joins it before accepting the next request. Closing the `arc` connection,
+joins it before accepting the next request. Closing the `irsc` connection,
 Ctrl-C, or a client timeout does not cancel the worker. The worker continues
 executing, and the server remains occupied until it finishes; its eventual
 response is simply written to a socket that may already be closed.
 
-This is the key limitation before using `arc` for long-running bot scripts.
+This is the key limitation before using `irsc` for long-running bot scripts.
 The next runtime phase needs an explicit job model with a job ID, asynchronous
 run acknowledgment, status, busy handling, cancellation, and a documented
 policy for client disconnects. Only after that contract is stable should the
