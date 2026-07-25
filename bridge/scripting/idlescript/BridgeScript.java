@@ -1,5 +1,7 @@
 package scripting.idlescript;
 
+import controller.BotController;
+
 /**
  * IdleRSC entry point for the local idlersc-bridge server.
  *
@@ -10,6 +12,7 @@ public class BridgeScript extends IdleScript {
   private static final int DEFAULT_PORT = 8765;
 
   private ScriptServer server;
+  private BotController botController;
   private boolean started;
 
   @Override
@@ -17,7 +20,8 @@ public class BridgeScript extends IdleScript {
     if (!started) {
       started = true;
       try {
-        server = new ScriptServer(controller, DEFAULT_PORT);
+        botController = new BotController(controller);
+        server = new ScriptServer(controller, botController, DEFAULT_PORT);
         server.start();
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown, "idlersc-bridge-shutdown"));
         controller.log("idlersc-bridge: listening on 127.0.0.1:" + DEFAULT_PORT, "yel");

@@ -125,12 +125,12 @@ test-bridge: ## Send a one-frame echo request to the running bridge server
 		rg -Fx '{"op":"ping"}' || { echo "ERROR: no matching echo response from $(BRIDGE_HOST):$(BRIDGE_PORT)" >&2; exit 1; }
 	@echo "Bridge echo test passed on $(BRIDGE_HOST):$(BRIDGE_PORT)"
 
-test-js: ## Run a small Nashorn JavaScript smoke test through the running bridge
+test-js: ## Run a Nashorn JavaScript and controller-binding smoke test through the running bridge
 	@command -v nc >/dev/null 2>&1 || { echo "ERROR: nc is required for test-js" >&2; exit 1; }
-	@source_b64="$$(printf '%s' 'console.log("js-smoke-test"); 1 + 1;' | base64 -w 0)"; \
+	@source_b64="$$(printf '%s' 'console.log("js-smoke-test"); "bindings:" + controller.isLoggedIn() + ":" + botController.inRunningMode();' | base64 -w 0)"; \
 		printf '{"op":"run","source_b64":"%s"}\n' "$$source_b64" | nc -w 5 "$(BRIDGE_HOST)" "$(BRIDGE_PORT)" | \
-		rg -F '"ok":true' || { echo "ERROR: JavaScript smoke test failed on $(BRIDGE_HOST):$(BRIDGE_PORT)" >&2; exit 1; }
-	@echo "JavaScript smoke test passed on $(BRIDGE_HOST):$(BRIDGE_PORT)"
+		rg -F '"ok":true' | rg -F 'bindings:' || { echo "ERROR: JavaScript/controller binding smoke test failed on $(BRIDGE_HOST):$(BRIDGE_PORT)" >&2; exit 1; }
+	@echo "JavaScript/controller binding smoke test passed on $(BRIDGE_HOST):$(BRIDGE_PORT)"
 
 clean-link: ## Remove only the generated bridge symlink
 	@if test -L "$(BRIDGE_LINK)"; then rm "$(BRIDGE_LINK)"; echo "Removed $(BRIDGE_LINK)"; else echo "No generated bridge symlink at $(BRIDGE_LINK)"; fi
