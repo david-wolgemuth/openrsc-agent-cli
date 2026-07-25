@@ -9,6 +9,8 @@ BRIDGE_SRC  ?= bridge
 # normal package-relative layout beneath it.
 BRIDGE_LINK ?= $(IDLE_DIR)/app/src/main/java/idlersc_bridge
 JAR         ?= $(IDLE_DIR)/IdleRSC.jar
+BRIDGE_HOST ?= 127.0.0.1
+BRIDGE_PORT ?= 8765
 JAVA_PACKAGE ?= openjdk-8-jdk
 GRADLE_USER_HOME ?= $(CURDIR)/.gradle
 ENV_FILE ?= .env
@@ -22,7 +24,7 @@ EXCLUDE_FILE  := $(SUBMODULE_GIT_DIR)/info/exclude
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check install-jdk setup build run clean-link
+.PHONY: help check install-jdk setup build run test-bridge clean-link
 
 help: ## Show available root-project commands
 	@awk 'BEGIN {FS = ":.*##"; print "Usage: make <target>"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -116,6 +118,12 @@ run: ## Build and run IdleRSC.jar
 		"theme-selected=RuneDark" \
 		> "$$account_file"
 	@java -jar "$(JAR)" --auto-start --account "$$account_name"
+
+test-bridge: ## Send a one-frame echo request to the running bridge server
+	@command -v nc >/dev/null 2>&1 || { echo "ERROR: nc is required for test-bridge" >&2; exit 1; }
+	@printf '%s\n' '{"op":"ping"}' | nc -w 3 "$(BRIDGE_HOST)" "$(BRIDGE_PORT)" | \
+		rg -Fx '{"op":"ping"}' || { echo "ERROR: no matching echo response from $(BRIDGE_HOST):$(BRIDGE_PORT)" >&2; exit 1; }
+	@echo "Bridge echo test passed on $(BRIDGE_HOST):$(BRIDGE_PORT)"
 
 clean-link: ## Remove only the generated bridge symlink
 	@if test -L "$(BRIDGE_LINK)"; then rm "$(BRIDGE_LINK)"; echo "Removed $(BRIDGE_LINK)"; else echo "No generated bridge symlink at $(BRIDGE_LINK)"; fi

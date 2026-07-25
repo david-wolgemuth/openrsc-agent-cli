@@ -176,7 +176,7 @@ discovered, instantiated, given a `Controller`, and entered through
 The first implementation added:
 
 ```text
-bridge/scripting/idlescript/BridgeHelloWorld.java
+bridge/scripting/idlescript/BridgeScript.java
 ```
 
 The source keeps the `scripting.idlescript` package so it can access the
@@ -261,8 +261,25 @@ running state, the script-start log is also evidence that automatic login
 completed. The script name was present in the generated temporary account file,
 which confirms it came through `.env` during a plain `make run`.
 
-This completes the minimal Java integration smoke test. The next architectural
-decision is still the JavaScript engine for the later socket/worker phases.
+The smoke-test class was then renamed to its permanent entry-point name,
+`BridgeScript`, before beginning the socket-server phase. The next
+architectural decision is still the JavaScript engine for the later worker
+phase.
+
+## Socket-server skeleton
+
+The permanent `BridgeScript` entry point now starts a daemon
+`idlersc-bridge-server` thread after IdleRSC invokes the native script. The
+initial server binds only to `127.0.0.1:8765`, accepts one client at a time,
+reads one newline-delimited frame, echoes it unchanged, and closes the
+connection. `Protocol` is intentionally only an echo seam at this stage; it
+does not parse JSON or evaluate code.
+
+The new classes compile into the runnable JAR and the root Makefile provides
+`make test-bridge` for the live echo checkpoint. A client run that receives
+login response `4` has not reached the script thread, so the echo test must be
+performed only after a successful login; the server is not expected to bind
+while IdleRSC is stuck retrying authentication.
 
 ## Architecture constraints that remain
 
