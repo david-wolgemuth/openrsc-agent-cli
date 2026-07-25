@@ -5,12 +5,14 @@ SHELL := /bin/sh
 IDLE_DIR    ?= vendors/Open-RSC/IdleRSC
 BRIDGE_SRC  ?= bridge
 # Java source roots are compiled recursively by Gradle. Keep the generated
-# link outside the upstream package directories until the Java package is set.
+# link outside the upstream package directories; bridge sources retain their
+# normal package-relative layout beneath it.
 BRIDGE_LINK ?= $(IDLE_DIR)/app/src/main/java/idlersc_bridge
 JAR         ?= $(IDLE_DIR)/IdleRSC.jar
 JAVA_PACKAGE ?= openjdk-8-jdk
 GRADLE_USER_HOME ?= $(CURDIR)/.gradle
 ENV_FILE ?= .env
+IDLE_SCRIPT ?=
 
 SUBMODULE_HEAD := $(IDLE_DIR)/.git
 SUBMODULE_GIT_DIR := $(shell git -C "$(IDLE_DIR)" rev-parse --git-dir 2>/dev/null)
@@ -92,9 +94,28 @@ run: ## Build and run IdleRSC.jar
 	@set +a
 	@test -n "$${IDLE_USERNAME:-}" || { echo "ERROR: IDLE_USERNAME is missing from $(ENV_FILE)" >&2; exit 1; }
 	@test -n "$${IDLE_PASSWORD:-}" || { echo "ERROR: IDLE_PASSWORD is missing from $(ENV_FILE)" >&2; exit 1; }
-	@IDLE_SERVER="$${IDLE_SERVER:-uranium}"
-	@case "$$IDLE_SERVER" in uranium|coleslaw) ;; *) echo "ERROR: IDLE_SERVER must be uranium or coleslaw" >&2; exit 1;; esac
-	@java -jar "$(JAR)" --auto-start --auto-login --init-cache "$$IDLE_SERVER" --username "$$IDLE_USERNAME" --password "$$IDLE_PASSWORD"
+	@idle_server="$${IDLE_SERVER:-uranium}"
+	@case "$$idle_server" in uranium|coleslaw) ;; *) echo "ERROR: IDLE_SERVER must be uranium or coleslaw" >&2; exit 1;; esac
+	@idle_script="$(IDLE_SCRIPT)"
+	@if test -z "$$idle_script"; then idle_script="$${IDLE_SCRIPT:-}"; fi
+	@idle_debug="$${IDLE_DEBUG:-false}"
+	@idle_log_window="$${IDLE_LOG_WINDOW:-false}"
+	@mkdir -p accounts
+	@account_file="$$(mktemp "$(CURDIR)/accounts/.idlersc-bridge.XXXXXX.properties")"
+	@account_name="$$(basename "$$account_file" .properties)"
+	@trap 'rm -f "$$account_file"' EXIT INT TERM
+	@printf '%s\n' \
+		"account-name=$$IDLE_USERNAME" \
+		"account-password=$$IDLE_PASSWORD" \
+		"account-server-option-address=game.openrsc.com" \
+		"account-server-option-port=$$idle_server" \
+		"auto-login=true" \
+		"debug=$$idle_debug" \
+		"log-window=$$idle_log_window" \
+		"script-name=$$idle_script" \
+		"theme-selected=RuneDark" \
+		> "$$account_file"
+	@java -jar "$(JAR)" --auto-start --account "$$account_name"
 
 clean-link: ## Remove only the generated bridge symlink
 	@if test -L "$(BRIDGE_LINK)"; then rm "$(BRIDGE_LINK)"; echo "Removed $(BRIDGE_LINK)"; else echo "No generated bridge symlink at $(BRIDGE_LINK)"; fi

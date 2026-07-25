@@ -166,6 +166,104 @@ tool such as `xdotool` can send F9 if installed, but no such tool was present
 in the agent environment. The root bridge CLI does not yet add a screenshot
 command.
 
+## Phase-1 hello-world iterations
+
+After the Phase-0 source verification, the first runtime milestone was made
+deliberately small: prove that bridge-owned Java is compiled, packaged,
+discovered, instantiated, given a `Controller`, and entered through
+`start(String[])`. No socket server or JavaScript evaluator was introduced.
+
+The first implementation added:
+
+```text
+bridge/scripting/idlescript/BridgeHelloWorld.java
+```
+
+The source keeps the `scripting.idlescript` package so it can access the
+package-private controller field in the vendor's `IdleScript` base class. The
+generated integration link remains outside the upstream package directories:
+
+```text
+app/src/main/java/idlersc_bridge -> ../../../../../../../bridge
+```
+
+The first version used `System.out.println` and `controller.displayMessage`.
+The class was compiled and appeared in `IdleRSC.jar`, but the println text did
+not appear in IdleRSC's persisted logs. Reading the vendor logger showed why:
+
+- IdleRSC redirects `System.err`, not `System.out`.
+- `Main.logScript` is the persisted script-log path.
+- `Controller.log(...)` calls `Main.logScript(...)` and displays the message
+  in the client.
+
+The smoke test was changed to call `controller.log("idlersc-bridge: hello world", "yel")` once.
+The once-only guard matters because IdleRSC repeatedly
+calls a native script's `start()` method; its return value is the delay before
+the next call. Without the guard, the hello message would be emitted roughly
+once per second.
+
+## Runtime launch and vendor-bug investigation
+
+The first fresh launches using direct command-line credentials reached cache
+generation and Uranium configuration, but then reported:
+
+```text
+NullPointerException
+  at bot.ui.ThemesMenu.colorMenuItem(ThemesMenu.java:119)
+```
+
+Source tracing established that this happens because the `--auto-start`
+command-line parsing path does not populate `CLIParser.colors`; it then assigns
+null to `Main.customColors`. The `Custom` placeholder theme is rendered during
+`ThemesMenu` construction and dereferences that null array. The exception is
+in the pinned IdleRSC code, before `Main` reaches its initial
+`controller.login()` call. This explains why direct Makefile auto-login appeared
+not to work, while manually completing login did.
+
+The vendor documentation was also compared with the pinned source. The
+checkout is `2.90.0-20-g963e3094`, while the README's CLI section is older and
+contains stale or mismatched names, including `--hide-side-panel` and
+`--unstick`. The current source defines `--sidebar` and has additional options
+such as `--disable-3d` and `--no-screen-refresh`. The source, not the README,
+is treated as authoritative.
+
+## Makefile workaround and successful end-to-end run
+
+Two separate Makefile problems were corrected:
+
+1. `make run` sourced `.env` in the recipe, but the recipe tested the Make
+   variable `$(IDLE_SCRIPT)`. Therefore `IDLE_SCRIPT=BridgeHelloWorld` in
+   `.env` could be ignored unless it was also supplied on the command line.
+   The recipe now resolves the shell-loaded value after sourcing `.env`.
+2. Direct `--username`/`--password` arguments select the vendor path that
+   leaves `Main.customColors` null. The recipe now creates a temporary,
+   ignored account-properties file under `accounts/`, passes only
+   `--auto-start --account <temporary-name>`, and removes the file when the
+   client exits. This deliberately uses the vendor's account-file parsing path,
+   which initializes custom colors and also carries the script name, server,
+   debug, and auto-login settings.
+
+The temporary account file avoids putting the password in the Java process
+argument list, though it remains readable on disk while the client runs. The
+generated pattern is ignored, and the root `Screenshots/` output directory was
+also added to `.gitignore` after runtime screenshot testing.
+
+The successful run proved all required pieces in sequence:
+
+```text
+Starting client for traci
+The 'BridgeHelloWorld' script has been started!
+[SCRIPTS] idlersc-bridge: hello world
+```
+
+Because IdleRSC waits for `controller.isLoggedIn()` before setting the script
+running state, the script-start log is also evidence that automatic login
+completed. The script name was present in the generated temporary account file,
+which confirms it came through `.env` during a plain `make run`.
+
+This completes the minimal Java integration smoke test. The next architectural
+decision is still the JavaScript engine for the later socket/worker phases.
+
 ## Architecture constraints that remain
 
 The planned dynamic JavaScript worker cannot yet be implemented from the
