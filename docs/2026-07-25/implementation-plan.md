@@ -7,7 +7,7 @@ IdleRSC script while leaving the upstream IdleRSC repository unchanged.
 
 The bridge repository owns the bridge code, CLI, bot-side JavaScript, tests,
 and orchestration. IdleRSC is a pinned upstream build dependency under
-`vendor/idlersc/`.
+`vendors/Open-RSC/IdleRSC/`.
 
 The first goal is not the complete remote scripting system. The first goal is
 to prove that an external bridge source directory can be linked into an
@@ -33,8 +33,9 @@ when the conflict affects a foundational design decision.
 
 ```text
 idlersc-bridge/
-├── vendor/
-│   └── idlersc/              # pinned IdleRSC submodule
+├── vendors/
+│   └── Open-RSC/
+│       └── IdleRSC/         # pinned IdleRSC submodule
 ├── bridge/                   # Java bridge source and tests
 ├── cli/                      # Node CLI, added in a later phase
 ├── bot/                      # JavaScript bot library and scripts
@@ -54,7 +55,7 @@ inspecting the pinned IdleRSC revision. Do not assume that the README's old
 
 ### IdleRSC
 
-- Add IdleRSC as a Git submodule under `vendor/idlersc/`.
+- Add IdleRSC as a Git submodule under `vendors/Open-RSC/IdleRSC/`.
 - Pin it to a specific known-good commit.
 - Record the source URL and commit in the bridge README or a small metadata
   file.
@@ -110,7 +111,7 @@ make clean-link  # remove only the generated symlink
 Expected configurable variables should include, at minimum:
 
 ```make
-IDLE_DIR    ?= vendor/idlersc
+IDLE_DIR    ?= vendors/Open-RSC/IdleRSC
 BRIDGE_SRC  ?= bridge
 BRIDGE_LINK ?= ...
 ```
@@ -133,17 +134,17 @@ The expected build flow is:
 
 ```text
 make setup
-  → validate vendor/idlersc
+  → validate vendors/Open-RSC/IdleRSC
   → create local bridge symlink
 
 make build
   → setup
-  → run vendor/idlersc/gradlew build
+  → run vendors/Open-RSC/IdleRSC/gradlew build
   → verify IdleRSC.jar
 
 make run
   → build
-  → java -jar vendor/idlersc/IdleRSC.jar
+  → java -jar vendors/Open-RSC/IdleRSC/IdleRSC.jar
 ```
 
 The prebuilt IdleRSC JAR, if downloaded from GitLab releases or CI artifacts,

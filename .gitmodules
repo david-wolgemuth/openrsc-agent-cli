@@ -1,0 +1,3 @@
+[submodule "vendors/Open-RSC/IdleRSC"]
+	path = vendors/Open-RSC/IdleRSC
+	url = https://github.com/Open-RSC/IdleRSC.git
