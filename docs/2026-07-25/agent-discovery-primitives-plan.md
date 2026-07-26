@@ -25,6 +25,54 @@ carry a hidden quest database.
 These are intentionally low-level. They cannot determine what a quest means,
 where an undiscovered target is, or which action should be attempted next.
 
+## Mindset for using higher-level tools
+
+Higher-level helpers should make reasoning more reliable, not replace it.
+Before calling one, the agent should be able to answer:
+
+1. What did I actually observe?
+2. What am I hypothesizing from that observation?
+3. What small action will test the hypothesis?
+4. What state change would confirm or disprove it?
+5. What is the safe stopping condition if the result is ambiguous?
+
+For example, seeing an object near the player is an observation. Calling it a
+mill, assuming it accepts grain, and assuming the resulting flour will appear
+on a particular floor are separate hypotheses. A good workflow tests those
+one at a time and records the result.
+
+The intended division of responsibility is:
+
+```text
+agent reasoning     -> choose the next experiment
+primitive library   -> perform it with bounded waits and verification
+memory              -> preserve observations, outcomes, and uncertainty
+```
+
+`walkAndVerify` should answer “did I reach the requested area?” It should not
+answer “where should I walk next?” `pickupAndVerify` should answer “did this
+visible item enter inventory?” It should not decide that the item is relevant
+to a quest. `searchUntil` may stop when a target criterion is observed, but it
+must not conceal the search policy or silently import a known solution.
+
+When an action fails, the next step is normally a fresh observation—not a
+blind retry with a larger timeout. Repeated failure is useful information:
+the target may be unreachable, the interaction may require a different command
+option, the player may be on the wrong map layer, or the hypothesis may simply
+be wrong.
+
+Higher-level workflows should therefore be:
+
+- explicit about their assumptions;
+- idempotent where practical, so they can resume from a checkpoint;
+- bounded by time, retries, inventory, combat, and login state;
+- verbose about before/after state;
+- willing to stop and return evidence instead of inventing success.
+
+The long-term goal is not a universal quest solver that already knows every
+answer. It is a disciplined loop in which the agent can safely turn small
+observations into verified capabilities over time.
+
 ## Next layer: observations
 
 Expand observation without smuggling in quest solutions:
