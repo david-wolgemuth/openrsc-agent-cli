@@ -29,6 +29,19 @@ function localImportsOnly() {
 }
 
 async function bundleScript({ source, entryPath, resolveDir }) {
+  // Preserve the existing expression-result behavior for ordinary scripts.
+  // Only module graphs need an IIFE wrapper, which otherwise turns the final
+  // eval expression into undefined/null.
+  if (!/^\s*(?:import|export)\b/m.test(source)) {
+    const transformed = await esbuild.transform(source, {
+      loader: 'js',
+      target: 'es5',
+      sourcefile: entryPath || '<inline>.js',
+      sourcemap: 'inline',
+    });
+    return transformed.code;
+  }
+
   const result = await esbuild.build({
     bundle: true,
     format: 'iife',
