@@ -50,14 +50,30 @@ function selectOptionContaining(text, timeoutMs) {
   return false;
 }
 
-function walkRoute(points, radius, timeoutMs) {
+function walkToAndReport(x, y, radius) {
   var distance = radius === undefined ? 2 : radius;
+  controller.walkTo(x, y, distance, true, true);
+  var finalX = controller.currentX();
+  var finalY = controller.currentY();
+  var remaining = controller.getDistanceFromLocalPlayer(x, y);
+  return {
+    success: remaining <= distance,
+    requested: [x, y],
+    final: [finalX, finalY],
+    distance: remaining,
+  };
+}
+
+function walkRoute(points, radius) {
+  var distance = radius === undefined ? 2 : radius;
+  var legs = [];
   for (var i = 0; i < points.length; i += 1) {
     var point = points[i];
-    controller.walkToAsync(point[0], point[1], distance);
-    if (!waitForLocation(point[0], point[1], distance, timeoutMs)) return false;
+    var leg = walkToAndReport(point[0], point[1], distance);
+    legs.push(leg);
+    if (!leg.success) return { success: false, legs: legs };
   }
-  return true;
+  return { success: true, legs: legs };
 }
 
 export {
@@ -66,5 +82,6 @@ export {
   waitForItem,
   waitForOptionMenu,
   selectOptionContaining,
+  walkToAndReport,
   walkRoute,
 };
