@@ -1,9 +1,9 @@
 /*
  * Polling helpers for long-running IdleRSC actions.
  *
- * This file is intended to be bundled before user scripts are evaluated. It
- * deliberately uses ES5-compatible JavaScript because the bridge runtime is
- * Nashorn on Java 8.
+ * Module bodies intentionally use ES5-compatible JavaScript because the
+ * bundled payload runs on Nashorn in Java 8. ESM import/export is removed by
+ * the CLI bundler before the payload reaches IdleRSC.
  */
 
 function waitFor(predicate, timeoutMs, pollMs) {

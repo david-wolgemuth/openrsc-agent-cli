@@ -1,8 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');
-const babel = require('@babel/core');
-const presetEnv = require('@babel/preset-env');
 
 const SCRIPT_ROOT = path.resolve(__dirname, '..', 'scripts');
 
@@ -35,9 +33,9 @@ async function bundleScript({ source, entryPath, resolveDir }) {
     bundle: true,
     format: 'iife',
     platform: 'neutral',
-    // esbuild handles bundling but deliberately does not lower ES2015 to ES5.
-    // Babel performs that final compatibility pass below.
-    target: 'es2015',
+    // Script modules are authored in ES5-compatible JavaScript. esbuild only
+    // needs to remove ESM syntax and bundle the local modules here.
+    target: 'es5',
     sourcemap: false,
     write: false,
     plugins: [localImportsOnly()],
@@ -56,13 +54,7 @@ async function bundleScript({ source, entryPath, resolveDir }) {
   if (!result.outputFiles || result.outputFiles.length !== 1) {
     throw new Error('bundler did not produce exactly one output file');
   }
-  const transformed = babel.transformSync(result.outputFiles[0].text, {
-    filename: entryPath || '<inline>.js',
-    sourceMaps: 'inline',
-    presets: [[presetEnv, { targets: { ie: '11' }, modules: false }]],
-  });
-  if (!transformed || !transformed.code) throw new Error('Babel did not produce bundled output');
-  return transformed.code;
+  return result.outputFiles[0].text;
 }
 
 function validateEntryPath(entryPath) {
