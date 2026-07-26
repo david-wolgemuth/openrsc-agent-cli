@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { runSource } = require('./socketClient');
+const { SCRIPT_ROOT, bundleScript, validateEntryPath } = require('./bundler');
 
 const DEFAULT_HOST = process.env.ARC_HOST || '127.0.0.1';
 const DEFAULT_PORT = Number(process.env.ARC_PORT || 8765);
@@ -58,14 +59,18 @@ function parseRunArgs(args) {
   }
 
   if (source === undefined && sourcePath === undefined) return { error: 'run requires -c or a script file' };
+  let entryPath;
+  let resolveDir = SCRIPT_ROOT;
   if (sourcePath !== undefined) {
     try {
-      source = fs.readFileSync(sourcePath, 'utf8');
+      entryPath = validateEntryPath(sourcePath);
+      source = fs.readFileSync(entryPath, 'utf8');
+      resolveDir = path.dirname(entryPath);
     } catch (error) {
       return { error: `could not read ${sourcePath}: ${error.message}` };
     }
   }
-  return { source, host, port, timeoutMs };
+  return { source, entryPath, resolveDir, host, port, timeoutMs };
 }
 
 async function run(args) {
@@ -73,7 +78,8 @@ async function run(args) {
   if (parsed.error) return fail(parsed.error);
 
   try {
-    const response = await runSource(parsed.source, {
+    const bundledSource = await bundleScript(parsed);
+    const response = await runSource(bundledSource, {
       host: parsed.host,
       port: parsed.port,
       timeoutMs: parsed.timeoutMs,

@@ -59,3 +59,12 @@ function walkRoute(points, radius, timeoutMs) {
   }
   return true;
 }
+
+export {
+  waitFor,
+  waitForLocation,
+  waitForItem,
+  waitForOptionMenu,
+  selectOptionContaining,
+  walkRoute,
+};

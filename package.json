@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "esbuild": "^0.28.1"
+  }
+}
