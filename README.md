@@ -7,7 +7,25 @@ results to the calling agent or shell.
 
 ## CLI examples
 
-Run a one-off JavaScript expression in the live client:
+The default command returns a compact live observation. Use semantic commands
+for ordinary inspection and interaction:
+
+```sh
+./irsc observe --fields player,npcs,menu
+./irsc entities --type npc
+./irsc map --radius 2
+./irsc path 120 708
+./irsc move 120 708 --radius 2 --deadline 45000
+./irsc events --since 0
+```
+
+`move` returns an explicit terminal outcome and checkpoints; it does not
+require a follow-up shell sleep. `talk npc:<id> --until menu` and `choose
+--contains <text>` provide the same bounded interaction pattern for an
+observed option menu.
+
+Run a one-off JavaScript expression in the live client when the semantic
+commands are insufficient:
 
 ```sh
 ./irsc run -c 'JSON.stringify({loggedIn: controller.isLoggedIn(), x: controller.currentX(), y: controller.currentY()})'
