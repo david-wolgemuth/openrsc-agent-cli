@@ -1,6 +1,7 @@
 Cache/
 Screenshots/
 .gradle/
+*.jar
 logs/
 accounts/.idlersc-bridge.*.properties
 .env
