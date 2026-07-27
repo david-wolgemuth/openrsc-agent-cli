@@ -42,6 +42,7 @@
  * @property {(message: string, color?: string) => void} log Write a message to the IdleRSC script log.
  * @property {(status: string) => void} setStatus Set the in-client bot status text.
  * @property {(milliseconds: number) => void} sleep Pause the current script for milliseconds.
+ * @property {(x: number, y: number, includeTileEdges?: boolean) => boolean} isReachable
  */
 
 /**
@@ -139,4 +140,32 @@
  * @name botController
  * @global
  * @type {BotController}
+ */
+
+/**
+ * Live collision/path reachability probe backed by the client’s current map segment.
+ *
+ * @name walkability
+ * @global
+ * @type {WalkabilityProbe}
+ */
+
+/**
+ * @typedef {Object} WalkabilityProbe
+ * @property {(x: number, y: number, includeTileEdges?: boolean) => boolean} isReachable
+ * @property {(x: number, y: number, includeTileEdges?: boolean) => Object} probe
+ * @property {(radius: number, includeTileEdges?: boolean) => JavaList} around
+ */
+
+/**
+ * @name dialogue
+ * @global
+ * @type {MessageBuffer}
+ */
+
+/**
+ * @typedef {Object} MessageBuffer
+ * @property {() => number} cursor Cursor for messages received so far.
+ * @property {(cursor: number) => JavaList} since Messages after a cursor.
+ * @property {() => string} getLogPath Durable JSONL message-log path.
  */

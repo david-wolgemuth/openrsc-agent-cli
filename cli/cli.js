@@ -13,12 +13,69 @@ function usage() {
     '  ./irsc run -c "javascript source"',
     '  ./irsc run <script.js>',
     '  ./irsc inspect',
+    '  ./irsc map [--radius <n>]',
+    '  ./irsc logs [--tail <n>] [--type <type>] [--file <path>]',
     '',
     'Options:',
     '  --host <host>  Bridge host (default: 127.0.0.1)',
     '  --port <port>  Bridge port (default: 8765)',
     '  --timeout <ms> Request timeout (default: 10000)',
   ].join('\n');
+}
+
+function parseLogsArgs(args) {
+  let file;
+  let tail = 50;
+  let type;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--file') {
+      file = args[++index];
+      if (!file) return { error: '--file requires a path' };
+    } else if (arg === '--tail') {
+      tail = Number(args[++index]);
+      if (!Number.isInteger(tail) || tail < 1) return { error: '--tail requires a positive number' };
+    } else if (arg === '--type') {
+      type = args[++index];
+      if (!type) return { error: '--type requires a message type' };
+    } else {
+      return { error: `unknown logs option: ${arg}` };
+    }
+  }
+  return { file, tail, type };
+}
+
+function latestMessageLog() {
+  const logDirectory = path.resolve('logs');
+  if (!fs.existsSync(logDirectory)) return undefined;
+  const candidates = fs.readdirSync(logDirectory)
+    .filter((name) => name.startsWith('idlersc-bridge-messages-') && name.endsWith('.jsonl'))
+    .map((name) => path.join(logDirectory, name))
+    .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs);
+  return candidates[0];
+}
+
+function logs(args) {
+  const parsed = parseLogsArgs(args);
+  if (parsed.error) return fail(parsed.error);
+  const logPath = parsed.file ? path.resolve(parsed.file) : latestMessageLog();
+  if (!logPath) return fail('no unified message log found');
+  if (!fs.existsSync(logPath)) return fail(`message log does not exist: ${logPath}`);
+
+  let events;
+  try {
+    events = fs.readFileSync(logPath, 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    return fail(`could not read message log: ${error.message}`);
+  }
+  if (parsed.type) {
+    const wanted = parsed.type.toUpperCase();
+    events = events.filter((event) => String(event.type).toUpperCase() === wanted);
+  }
+  console.log(JSON.stringify({ file: logPath, events: events.slice(-parsed.tail) }));
 }
 
 function fail(message) {
@@ -92,6 +149,30 @@ async function run(args) {
   }
 }
 
+async function mapProbe(args) {
+  let radius = 1;
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--radius') return fail(`unknown map option: ${args[index]}`);
+    radius = Number(args[++index]);
+    if (!Number.isInteger(radius) || radius < 0 || radius > 3) {
+      return fail('--radius must be an integer from 0 through 3');
+    }
+  }
+  const source = `var p=walkability.around(${radius},false),r=[];for(var i=0;i<p.size();i++){var q=p.get(i);r.push({x:Number(q.getX()),y:Number(q.getY()),reachable:Boolean(q.isReachable())});}JSON.stringify({player:[controller.currentX(),controller.currentY()],radius:${radius},tiles:r});`;
+  try {
+    const response = await runSource(source, {
+      host: DEFAULT_HOST,
+      port: DEFAULT_PORT,
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    });
+    console.log(JSON.stringify(response));
+    if (!response.ok) process.exitCode = 1;
+  } catch (error) {
+    console.error(`irsc: ${error.message}`);
+    process.exitCode = 1;
+  }
+}
+
 async function main(args) {
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
     console.log(usage());
@@ -100,6 +181,8 @@ async function main(args) {
   const [command, ...commandArgs] = args;
   if (command === 'run') return run(commandArgs);
   if (command === 'inspect') return run(['scripts/inspect.js', ...commandArgs]);
+  if (command === 'map') return mapProbe(commandArgs);
+  if (command === 'logs') return logs(commandArgs);
   return fail(`unknown command: ${command}`);
 }
 

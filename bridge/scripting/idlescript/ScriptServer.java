@@ -20,13 +20,16 @@ import java.nio.charset.StandardCharsets;
 public final class ScriptServer implements Runnable {
   private final Controller controller;
   private final BotController botController;
+  private final MessageBuffer messageBuffer;
   private final int port;
   private ServerSocket serverSocket;
 
-  public ScriptServer(Controller controller, BotController botController, int port)
+  public ScriptServer(
+      Controller controller, BotController botController, MessageBuffer messageBuffer, int port)
       throws IOException {
     this.controller = controller;
     this.botController = botController;
+    this.messageBuffer = messageBuffer;
     this.port = port;
     this.serverSocket = new ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"));
   }
@@ -69,7 +72,8 @@ public final class ScriptServer implements Runnable {
         try {
           Protocol.Request request = Protocol.parse(frame);
           if ("run".equals(request.getOperation())) {
-            ScriptWorker worker = new ScriptWorker(controller, botController, request.getSource());
+            ScriptWorker worker =
+                new ScriptWorker(controller, botController, messageBuffer, request.getSource());
             worker.start();
             worker.join();
             if (worker.getError() != null) writer.println(Protocol.error(worker.getError()));

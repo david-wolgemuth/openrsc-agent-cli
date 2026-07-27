@@ -9,14 +9,20 @@ import javax.script.ScriptEngineManager;
 public final class ScriptWorker extends Thread {
   private final Controller controller;
   private final BotController botController;
+  private final MessageBuffer messageBuffer;
   private final String source;
   private Object result;
   private Throwable error;
 
-  public ScriptWorker(Controller controller, BotController botController, String source) {
+  public ScriptWorker(
+      Controller controller,
+      BotController botController,
+      MessageBuffer messageBuffer,
+      String source) {
     super("idlersc-bridge-script-worker");
     this.controller = controller;
     this.botController = botController;
+    this.messageBuffer = messageBuffer;
     this.source = source;
   }
 
@@ -28,6 +34,9 @@ public final class ScriptWorker extends Thread {
         throw new IllegalStateException("Nashorn JavaScript engine is unavailable");
       engine.put("controller", controller);
       engine.put("botController", botController);
+      engine.put("walkability", new WalkabilityProbe(controller));
+      engine.put("dialogue", messageBuffer);
+      engine.put("messages", messageBuffer);
       engine.put("console", new ScriptConsole(controller));
       result = engine.eval(source);
     } catch (Throwable exception) {
