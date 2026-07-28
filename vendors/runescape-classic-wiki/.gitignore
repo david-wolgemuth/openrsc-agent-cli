@@ -1,0 +1,8 @@
+# Generated crawl state and content are local working data, not vendored source.
+flat/
+state/
+output/
+tree-output*/
+
+# macOS filesystem metadata.
+.DS_Store
