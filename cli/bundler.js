@@ -28,7 +28,7 @@ function localImportsOnly() {
   };
 }
 
-async function bundleScript({ source, entryPath, resolveDir }) {
+async function bundleScript({ source, entryPath, resolveDir, returnDefault = false }) {
   // Preserve the existing expression-result behavior for ordinary scripts.
   // Only module graphs need an IIFE wrapper, which otherwise turns the final
   // eval expression into undefined/null.
@@ -45,6 +45,7 @@ async function bundleScript({ source, entryPath, resolveDir }) {
   const result = await esbuild.build({
     bundle: true,
     format: 'iife',
+    ...(returnDefault ? { globalName: '__irscBundleResult' } : {}),
     platform: 'neutral',
     // Script modules are authored in ES5-compatible JavaScript. esbuild only
     // needs to remove ESM syntax and bundle the local modules here.
@@ -67,7 +68,8 @@ async function bundleScript({ source, entryPath, resolveDir }) {
   if (!result.outputFiles || result.outputFiles.length !== 1) {
     throw new Error('bundler did not produce exactly one output file');
   }
-  return result.outputFiles[0].text;
+  const bundled = result.outputFiles[0].text;
+  return returnDefault ? `${bundled}\n__irscBundleResult.default;` : bundled;
 }
 
 function validateEntryPath(entryPath) {

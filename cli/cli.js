@@ -6,6 +6,8 @@ const { SCRIPT_ROOT, bundleScript, validateEntryPath } = require('./bundler');
 const DEFAULT_HOST = process.env.ARC_HOST || '127.0.0.1';
 const DEFAULT_PORT = Number(process.env.ARC_PORT || 8765);
 const DEFAULT_TIMEOUT_MS = Number(process.env.IRSC_TIMEOUT_MS || 10000);
+const MOVE_TRANSPORT_TIMEOUT_MS = 120000;
+const MOVE_COMMAND_PATH = path.join(SCRIPT_ROOT, 'commands', 'move.mjs');
 
 function usage() {
   return [
@@ -14,7 +16,7 @@ function usage() {
     '  ./irsc entities [--type npc]',
     '  ./irsc map [--radius <n>]',
     '  ./irsc path <x> <y>',
-    '  ./irsc move <x> <y> [--radius <n>] [--deadline <ms>]',
+    '  ./irsc move <x> <y> [--radius <n>]',
     '  ./irsc talk npc:<id> [--until menu] [--deadline <ms>]',
     '  ./irsc choose [--contains <text>] [--index <n>]',
     '  ./irsc events [--since <cursor>]',
@@ -50,9 +52,14 @@ function decodeResponse(response) {
   return response;
 }
 
-async function request(source, timeoutMs = DEFAULT_TIMEOUT_MS) {
+async function request(source, timeoutMs = DEFAULT_TIMEOUT_MS, { direct = false } = {}) {
   const response = await runSource(source, { host: DEFAULT_HOST, port: DEFAULT_PORT, timeoutMs });
   const decoded = decodeResponse(response);
+  if (direct && decoded.ok && decoded.result && typeof decoded.result === 'object') {
+    console.log(JSON.stringify(decoded.result));
+    if (!decoded.result.ok) process.exitCode = 1;
+    return decoded.result;
+  }
   console.log(JSON.stringify(decoded));
   if (!decoded.ok) process.exitCode = 1;
   return decoded;
@@ -158,12 +165,23 @@ async function pathProbe(args) {
 
 async function move(args) {
   try {
-    if (args.length < 2) throw new Error('usage: move <x> <y> [--radius <n>] [--deadline <ms>]');
-    const x = parseInteger(args[0], 'x'); const y = parseInteger(args[1], 'y'); let radius = 2; let deadline = DEFAULT_TIMEOUT_MS;
-    for (let i = 2; i < args.length; i += 2) { if (!['--radius', '--deadline'].includes(args[i]) || args[i + 1] === undefined) throw new Error(`unknown move option: ${args[i]}`); if (args[i] === '--radius') radius = parseInteger(args[i + 1], 'radius', { min: 0, max: 20 }); else deadline = parseInteger(args[i + 1], 'deadline', { min: 1 }); }
-    const source = `var requested=[${x},${y}],before=[Number(controller.currentX()),Number(controller.currentY())],started=Date.now(),reachable=Boolean(walkability.isReachable(${x},${y},false)),checkpoints=[],last=before,lastProgress=started;function checkpoint(){var now=Date.now(),here=[Number(controller.currentX()),Number(controller.currentY())],distance=Number(controller.getDistanceFromLocalPlayer(${x},${y}));checkpoints.push({x:here[0],y:here[1],walking:Boolean(controller.isCurrentlyWalking()),distance:distance,elapsedMs:now-started});if(here[0]!==last[0]||here[1]!==last[1]){last=here;lastProgress=now;}return distance<=${radius};}var reached=checkpoint();if(!reached&&reachable){controller.walkToAsync(${x},${y},${radius});while(Date.now()-started<${deadline}){if(checkpoint())break;if(!controller.isCurrentlyWalking()&&Date.now()-lastProgress>500)break;controller.sleep(200);}}var after=[Number(controller.currentX()),Number(controller.currentY())],distance=Number(controller.getDistanceFromLocalPlayer(${x},${y})),reached=distance<=${radius},timedOut=!reached&&Date.now()-started>=${deadline},outcome=reached?'reached':(!reachable?'no_path':(timedOut?'deadline_exceeded':'not_reached'));JSON.stringify({action:{kind:'move',status:reached?'succeeded':(!reachable?'rejected':'failed'),outcome:outcome,before:before,requested:requested,after:after,finalDistance:distance,elapsedMs:Date.now()-started,worker:'idle'},checkpoints:checkpoints});`;
-    return await request(source, Math.max(DEFAULT_TIMEOUT_MS, deadline + 1000));
-  } catch (error) { fail(error.message); }
+    if (args.length < 2) throw new Error('usage: move <x> <y> [--radius <n>]');
+    const x = parseInteger(args[0], 'x'); const y = parseInteger(args[1], 'y'); let radius = 2;
+    if (args.length > 2) {
+      if (args.length !== 4 || args[2] !== '--radius') throw new Error(`unknown move option: ${args[2] || ''}`);
+      radius = parseInteger(args[3], 'radius', { min: 0, max: 20 });
+    }
+    const template = fs.readFileSync(MOVE_COMMAND_PATH, 'utf8');
+    const source = template.replace('__MOVE_X__', String(x)).replace('__MOVE_Y__', String(y)).replace('__MOVE_RADIUS__', String(radius));
+    const bundled = await bundleScript({ source, resolveDir: path.dirname(MOVE_COMMAND_PATH), returnDefault: true });
+    return await request(bundled, MOVE_TRANSPORT_TIMEOUT_MS, { direct: true });
+  } catch (error) {
+    if (/usage:|unknown move option|must be an integer/.test(error.message)) fail(error.message);
+    else {
+      console.error(JSON.stringify({ ok: false, status: 'failed', outcome: 'controller_error', safeToAct: false, error: { code: 'BRIDGE_ERROR', message: error.message } }));
+      process.exitCode = 1;
+    }
+  }
 }
 
 function npcId(value) { const match = /^npc:(\d+)$/.exec(value || ''); if (!match) throw new Error('talk requires npc:<id>'); return Number(match[1]); }
