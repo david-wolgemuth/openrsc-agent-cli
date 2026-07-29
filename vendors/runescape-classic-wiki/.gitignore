@@ -3,6 +3,7 @@ flat/
 state/
 output/
 tree-output*/
+build/
 
 # macOS filesystem metadata.
 .DS_Store

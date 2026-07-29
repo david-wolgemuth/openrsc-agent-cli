@@ -8,8 +8,43 @@ const DEFAULT_PORT = Number(process.env.ARC_PORT || 8765);
 const DEFAULT_TIMEOUT_MS = Number(process.env.IRSC_TIMEOUT_MS || 10000);
 const MOVE_TRANSPORT_TIMEOUT_MS = 120000;
 const MOVE_COMMAND_PATH = path.join(SCRIPT_ROOT, 'commands', 'move.mjs');
+const WIKI_BUILD_PATH = path.resolve(__dirname, '../vendors/runescape-classic-wiki/build');
+
+function wikiCategoryPaths() {
+  if (!fs.existsSync(WIKI_BUILD_PATH)) return [];
+  const paths = [];
+  function visit(directory, relative = '') {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const child = path.join(relative, entry.name);
+      paths.push(child.split(path.sep).join('/'));
+      visit(path.join(directory, entry.name), child);
+    }
+  }
+  visit(WIKI_BUILD_PATH);
+  return paths.sort((left, right) => left.localeCompare(right));
+}
+
+function wikiOverview() {
+  const categories = wikiCategoryPaths();
+  return categories.length
+    ? { message: 'Wiki categories and subcategories are available below the local wiki build.', categories }
+    : { message: 'Wiki category build is not available locally.', categories: [] };
+}
+
+function wikiHelpOverview() {
+  const categories = wikiCategoryPaths().filter((category) => !category.includes('/'));
+  return categories.length
+    ? {
+      message: 'For help with actual gameplay, see wiki:',
+      location: path.relative(process.cwd(), WIKI_BUILD_PATH) || '.',
+      categories,
+    }
+    : { message: 'For help with actual gameplay, see wiki: (local wiki build is not available)' };
+}
 
 function usage() {
+  const wiki = wikiHelpOverview();
   return [
     'Usage:',
     '  ./irsc observe [--full] [--fields <list>]',
@@ -25,6 +60,12 @@ function usage() {
     '  ./irsc logs [--tail <n>] [--type <type>] [--file <path>]',
     '',
     'Global run options: --host <host> --port <port> --timeout <ms>',
+    '',
+    wiki.message,
+    ...(wiki.location ? [`  ${wiki.location}`, '', 'Top-level categories:', ...wiki.categories.map((category) => `  ${category}`)] : []),
+    '',
+    'If the CLI could not connect, start the IdleRSC bridge server with:',
+    '  make run',
   ].join('\n');
 }
 
@@ -52,9 +93,9 @@ function decodeResponse(response) {
   return response;
 }
 
-async function request(source, timeoutMs = DEFAULT_TIMEOUT_MS, { direct = false } = {}) {
+async function request(source, timeoutMs = DEFAULT_TIMEOUT_MS, { direct = false, decorate } = {}) {
   const response = await runSource(source, { host: DEFAULT_HOST, port: DEFAULT_PORT, timeoutMs });
-  const decoded = decodeResponse(response);
+  const decoded = decorate ? decorate(decodeResponse(response)) : decodeResponse(response);
   if (direct && decoded.ok && decoded.result && typeof decoded.result === 'object') {
     console.log(JSON.stringify(decoded.result));
     if (!decoded.result.ok) process.exitCode = 1;
@@ -63,6 +104,11 @@ async function request(source, timeoutMs = DEFAULT_TIMEOUT_MS, { direct = false 
   console.log(JSON.stringify(decoded));
   if (!decoded.ok) process.exitCode = 1;
   return decoded;
+}
+
+function addWikiOverview(response) {
+  if (!response?.ok || !response.result || typeof response.result !== 'object' || Array.isArray(response.result)) return response;
+  return { ...response, result: { ...response.result, wiki: wikiOverview() } };
 }
 
 function latestMessageLog() {
@@ -140,7 +186,11 @@ if(include('menu')){var options=[],c=controller.getOptionMenuCount();for(var m=0
 JSON.stringify(result);`;
 }
 
-async function observe(args) { try { return await request(observationSource(parseFields(args))); } catch (error) { fail(error.message); } }
+async function observe(args) {
+  try {
+    return await request(observationSource(parseFields(args)), DEFAULT_TIMEOUT_MS, { decorate: args.length === 0 ? addWikiOverview : undefined });
+  } catch (error) { fail(error.message); }
+}
 
 async function entities(args) {
   if (args.length !== 0 && !(args.length === 2 && args[0] === '--type' && args[1] === 'npc')) return fail('entities currently supports only --type npc');
@@ -211,8 +261,12 @@ async function events(args) {
 }
 
 async function main(args) {
-  if (!args.length) return observe([]);
-  if (args[0] === '--help' || args[0] === '-h') return console.log(usage());
+  if (!args.length) {
+    const result = await observe([]);
+    console.log(usage());
+    return result;
+  }
+  if (args[0] === '--help' || args[0] === '-h' || args[0] === 'help') return console.log(usage());
   const [command, ...rest] = args;
   if (command === 'run') return run(rest);
   if (command === 'inspect') return observe(['--full', ...rest]);
