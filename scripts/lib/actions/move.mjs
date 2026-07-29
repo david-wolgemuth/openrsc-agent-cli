@@ -5,6 +5,8 @@ var MAP_RADIUS = 2;
 var ENTITY_RADIUS = 5;
 var DEFAULT_QUIET_MS = 2000;
 var DEFAULT_SETTLE_DEADLINE_MS = 30000;
+var DEFAULT_NAVIGATION_DEADLINE_MS = 90000;
+var DEFAULT_MAX_PATH_LEGS = 8;
 
 function stage(name) {
   if (typeof bridge !== 'undefined' && bridge && bridge.stage) bridge.stage(name);
@@ -146,6 +148,7 @@ function questChanges(before, after) {
 }
 
 function classifyMove(input) {
+  if (input.navigationFailure) return { ok: false, status: 'failed', outcome: input.navigationFailure, safeToAct: false };
   if (!input.loggedIn) return { ok: false, status: 'failed', outcome: 'logged_out', safeToAct: false };
   if (!input.running) return { ok: false, status: 'failed', outcome: 'client_stopped', safeToAct: false };
   if (!input.settled) return { ok: false, status: 'indeterminate', outcome: 'settle_timeout', safeToAct: false };
@@ -154,7 +157,50 @@ function classifyMove(input) {
   if (input.finalDistance <= input.radius) {
     return { ok: true, status: 'succeeded', outcome: input.initialDistance <= input.radius ? 'already_at_target' : 'reached', safeToAct: true };
   }
-  return { ok: false, status: 'failed', outcome: 'not_reached', safeToAct: true };
+  return { ok: false, status: 'failed', outcome: 'not_reached', safeToAct: false };
+}
+
+function walkPathLeg(target) {
+  var MapPoint = Java.type('models.entities.MapPoint');
+  botController.pathWalkerApi.walkTo(new MapPoint(target.x, target.y));
+}
+
+function navigateInPathLegs(target, options) {
+  var config = options || {};
+  var read = config.readPosition || readPosition;
+  var distance = config.distanceTo || distanceTo;
+  var walkLeg = config.walkLeg || walkPathLeg;
+  var now = config.now || function () { return Date.now(); };
+  var pendingIdleMove = config.pendingIdleMove || function () { return Boolean(controller.getNeedToMove()); };
+  var inCombat = config.inCombat || function () { return Boolean(controller.isInCombat()); };
+  var maxLegs = config.maxLegs === undefined ? DEFAULT_MAX_PATH_LEGS : config.maxLegs;
+  var deadlineMs = config.deadlineMs === undefined ? DEFAULT_NAVIGATION_DEADLINE_MS : config.deadlineMs;
+  var startedAt = now();
+  var legs = [];
+  var position = read();
+  var currentDistance = distance(target);
+
+  while (currentDistance > target.radius) {
+    if (pendingIdleMove()) return { position: position, distance: currentDistance, legs: legs, elapsedMs: now() - startedAt, failure: 'anti_idle_pending' };
+    if (inCombat()) return { position: position, distance: currentDistance, legs: legs, elapsedMs: now() - startedAt, failure: 'combat_interrupted' };
+    if (legs.length >= maxLegs) return { position: position, distance: currentDistance, legs: legs, elapsedMs: now() - startedAt, failure: 'path_leg_limit' };
+    if (now() - startedAt >= deadlineMs) return { position: position, distance: currentDistance, legs: legs, elapsedMs: now() - startedAt, failure: 'path_deadline' };
+
+    var before = position;
+    var beforeDistance = currentDistance;
+    stage('path_leg_' + (legs.length + 1) + '_started');
+    walkLeg(target);
+    position = read();
+    currentDistance = distance(target);
+    var leg = { index: legs.length + 1, from: before, to: position, distanceBefore: beforeDistance, distanceAfter: currentDistance };
+    legs.push(leg);
+    stage('path_leg_' + leg.index + '_finished');
+
+    if (samePosition(before, position)) return { position: position, distance: currentDistance, legs: legs, elapsedMs: now() - startedAt, failure: 'path_no_progress' };
+    if (currentDistance > beforeDistance + target.radius) return { position: position, distance: currentDistance, legs: legs, elapsedMs: now() - startedAt, failure: 'path_off_route' };
+  }
+
+  return { position: position, distance: currentDistance, legs: legs, elapsedMs: now() - startedAt, failure: null };
 }
 
 function captureScene(position, errors) {
@@ -191,17 +237,14 @@ function moveAndObserve(options) {
     var atControllerReturn = before;
     var atControllerReturnDistance = initialDistance;
     var atControllerReturnWalkingSample = safeCall(observationErrors, 'controllerReturn.walking', null, function () { return Boolean(controller.isCurrentlyWalking()); });
-    var walkStarted = Date.now();
-    if (initialDistance > target.radius) {
-      stage('walk_started');
-      controller.walkTo(target.x, target.y, target.radius, true, true);
-      stage('walk_returned');
-      controllerReturned = true;
-      atControllerReturn = readPosition();
-      atControllerReturnDistance = distanceTo(target);
-      atControllerReturnWalkingSample = Boolean(controller.isCurrentlyWalking());
-    }
-    var walkMs = Date.now() - walkStarted;
+    stage('navigation_started');
+    var navigation = navigateInPathLegs(target);
+    stage('navigation_finished');
+    controllerReturned = navigation.legs.length > 0;
+    atControllerReturn = navigation.position;
+    atControllerReturnDistance = navigation.distance;
+    atControllerReturnWalkingSample = Boolean(controller.isCurrentlyWalking());
+    var walkMs = navigation.elapsedMs;
     stage('settlement_started');
     var settlement = waitForStablePosition({ quietMs: DEFAULT_QUIET_MS, deadlineMs: DEFAULT_SETTLE_DEADLINE_MS });
     stage('settlement_finished');
@@ -233,7 +276,7 @@ function moveAndObserve(options) {
     var loaded = Boolean(controller.isLoaded());
     var running = Boolean(controller.isRunning());
     var inCombat = Boolean(controller.isInCombat());
-    var classification = classifyMove({ initialDistance: initialDistance, finalDistance: finalDistance, radius: target.radius, settled: settlement.settled, loggedIn: loggedIn, running: running, inCombat: inCombat, integrityPassed: integrityPassed });
+    var classification = classifyMove({ initialDistance: initialDistance, finalDistance: finalDistance, radius: target.radius, settled: settlement.settled, loggedIn: loggedIn, running: running, inCombat: inCombat, integrityPassed: integrityPassed, navigationFailure: navigation.failure });
     stage('observation_finished');
     stage('result_classified');
     var finalInventory = observation.inventory;
@@ -243,7 +286,7 @@ function moveAndObserve(options) {
       ok: classification.ok, status: classification.status, outcome: classification.outcome, safeToAct: classification.safeToAct,
       action: { type: 'move', target: target },
       before: { position: before },
-      completion: { controllerReturned: controllerReturned, atControllerReturn: { position: atControllerReturn, distance: atControllerReturnDistance, walkingSample: atControllerReturnWalkingSample }, settled: settlement.settled, settleElapsedMs: settlement.elapsedMs },
+      completion: { controllerReturned: controllerReturned, atControllerReturn: { position: atControllerReturn, distance: atControllerReturnDistance, walkingSample: atControllerReturnWalkingSample }, navigation: { legs: navigation.legs, failure: navigation.failure }, settled: settlement.settled, settleElapsedMs: settlement.elapsedMs },
       after: { position: finalPosition, distance: finalDistance, reached: settlement.settled && finalDistance <= target.radius, walkingSample: safeCall(observationErrors, 'after.walking', null, function () { return Boolean(controller.isCurrentlyWalking()); }), loggedIn: loggedIn, loaded: loaded, running: running, inCombat: inCombat, inventoryChanges: inventoryChanges(beforeInventory, finalInventory), questChanges: questChanges(beforeQuests, finalQuests) },
       timing: { walkMs: walkMs, settleMs: settlement.elapsedMs, observationMs: Date.now() - observationMsStarted, totalMs: Date.now() - startedAt },
       events: observation.eventResult.events, nextCursor: observation.eventResult.nextCursor, scene: observation.scene, observationErrors: observationErrors,
@@ -253,4 +296,4 @@ function moveAndObserve(options) {
   }
 }
 
-export { moveAndObserve, waitForStablePosition, classifyMove };
+export { moveAndObserve, waitForStablePosition, classifyMove, navigateInPathLegs };

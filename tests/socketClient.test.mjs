@@ -55,3 +55,14 @@ test('socket client reports a timeout while the server remains busy', async () =
     });
   });
 });
+
+test('socket client reports a connection reset before a response', async () => {
+  await withServer((socket) => socket.once('data', () => socket.resetAndDestroy()), async (port) => {
+    await assert.rejects(runSource('1', { host: '127.0.0.1', port }), (error) => {
+      assert.ok(error instanceof BridgeTransportError);
+      assert.equal(error.code, 'bridge_disconnected');
+      assert.equal(error.transport.bytesReceived, 0);
+      return true;
+    });
+  });
+});

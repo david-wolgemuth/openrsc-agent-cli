@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { waitForStablePosition, classifyMove } from '../scripts/lib/actions/move.mjs';
+import { waitForStablePosition, classifyMove, navigateInPathLegs } from '../scripts/lib/actions/move.mjs';
 
 function simulatedWait(sequence, config) {
   var index = 0;
@@ -72,4 +72,38 @@ test('controller-return distance is independent from later final distance', () =
   const base = { radius: 0, settled: true, loggedIn: true, running: true, inCombat: false, integrityPassed: true, initialDistance: 18 };
   assert.equal(classifyMove({ ...base, finalDistance: 0 }).outcome, 'reached');
   assert.equal(classifyMove({ ...base, finalDistance: 4 }).outcome, 'not_reached');
+});
+
+test('path navigation replans short legs until inside the target radius', () => {
+  var position = p(0, 0);
+  var clock = 0;
+  var result = navigateInPathLegs({ x: 12, y: 0, radius: 1 }, {
+    now: () => clock,
+    readPosition: () => position,
+    distanceTo: (target) => Math.abs(target.x - position.x),
+    walkLeg: () => { position = p(position.x + 4, 0); clock += 100; },
+    pendingIdleMove: () => false,
+    inCombat: () => false,
+  });
+  assert.equal(result.failure, null);
+  assert.equal(result.legs.length, 3);
+  assert.equal(result.distance, 0);
+});
+
+test('path navigation stops safely when a leg makes no progress or moves away', () => {
+  var still = navigateInPathLegs({ x: 10, y: 0, radius: 0 }, {
+    readPosition: () => p(0, 0), distanceTo: () => 10, walkLeg: () => {},
+    pendingIdleMove: () => false, inCombat: () => false,
+  });
+  assert.equal(still.failure, 'path_no_progress');
+
+  var position = p(0, 0);
+  var away = navigateInPathLegs({ x: 10, y: 0, radius: 1 }, {
+    readPosition: () => position,
+    distanceTo: () => Math.abs(10 - position.x),
+    walkLeg: () => { position = p(-5, 0); },
+    pendingIdleMove: () => false, inCombat: () => false,
+  });
+  assert.equal(away.failure, 'path_off_route');
+  assert.equal(classifyMove({ radius: 1, settled: true, loggedIn: true, running: true, inCombat: false, integrityPassed: true, initialDistance: 10, finalDistance: 15, navigationFailure: away.failure }).safeToAct, false);
 });

@@ -6,7 +6,7 @@ const { SCRIPT_ROOT, bundleScript, validateEntryPath } = require('./bundler');
 const DEFAULT_HOST = process.env.ARC_HOST || '127.0.0.1';
 const DEFAULT_PORT = Number(process.env.ARC_PORT || 8765);
 const DEFAULT_TIMEOUT_MS = Number(process.env.IRSC_TIMEOUT_MS || 10000);
-const MOVE_TRANSPORT_TIMEOUT_MS = 120000;
+const MOVE_TRANSPORT_TIMEOUT_MS = 180000;
 const MOVE_COMMAND_PATH = path.join(SCRIPT_ROOT, 'commands', 'move.mjs');
 const WIKI_BUILD_PATH = path.resolve(__dirname, '../vendors/runescape-classic-wiki/build');
 
