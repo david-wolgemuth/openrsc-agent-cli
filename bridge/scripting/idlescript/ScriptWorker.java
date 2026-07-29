@@ -10,6 +10,7 @@ public final class ScriptWorker extends Thread {
   private final Controller controller;
   private final BotController botController;
   private final MessageBuffer messageBuffer;
+  private final BridgeTrace trace;
   private final String source;
   private Object result;
   private Throwable error;
@@ -18,17 +19,20 @@ public final class ScriptWorker extends Thread {
       Controller controller,
       BotController botController,
       MessageBuffer messageBuffer,
-      String source) {
+      String source,
+      BridgeTrace trace) {
     super("idlersc-bridge-script-worker");
     this.controller = controller;
     this.botController = botController;
     this.messageBuffer = messageBuffer;
     this.source = source;
+    this.trace = trace;
   }
 
   @Override
   public void run() {
     try {
+      trace.stage("worker_started");
       ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
       if (engine == null)
         throw new IllegalStateException("Nashorn JavaScript engine is unavailable");
@@ -38,9 +42,13 @@ public final class ScriptWorker extends Thread {
       engine.put("dialogue", messageBuffer);
       engine.put("messages", messageBuffer);
       engine.put("console", new ScriptConsole(controller));
+      engine.put("bridge", trace);
       result = engine.eval(source);
     } catch (Throwable exception) {
       error = exception;
+      trace.exception("worker_exception", exception);
+    } finally {
+      trace.stage("worker_finished");
     }
   }
 

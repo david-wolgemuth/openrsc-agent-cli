@@ -10,6 +10,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Minimal loopback-only server for the bridge protocol.
@@ -18,6 +19,7 @@ import java.nio.charset.StandardCharsets;
  * client connection.
  */
 public final class ScriptServer implements Runnable {
+  private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong(1);
   private final Controller controller;
   private final BotController botController;
   private final MessageBuffer messageBuffer;
@@ -72,12 +74,20 @@ public final class ScriptServer implements Runnable {
         try {
           Protocol.Request request = Protocol.parse(frame);
           if ("run".equals(request.getOperation())) {
+            BridgeTrace trace = new BridgeTrace(controller, NEXT_REQUEST_ID.getAndIncrement());
+            trace.stage("request_received");
             ScriptWorker worker =
-                new ScriptWorker(controller, botController, messageBuffer, request.getSource());
+                new ScriptWorker(
+                    controller, botController, messageBuffer, request.getSource(), trace);
             worker.start();
             worker.join();
-            if (worker.getError() != null) writer.println(Protocol.error(worker.getError()));
-            else writer.println(Protocol.success(worker.getResult()));
+            String response;
+            if (worker.getError() != null) response = Protocol.error(worker.getError());
+            else response = Protocol.success(worker.getResult());
+            trace.stage("response_serialized");
+            trace.stage("response_write_started");
+            writer.println(response);
+            trace.stage("response_write_finished");
           } else {
             writer.println(Protocol.error(new IllegalArgumentException("unknown operation")));
           }

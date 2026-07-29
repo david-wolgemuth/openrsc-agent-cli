@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { runSource } = require('./socketClient');
+const { runSource, BridgeTransportError } = require('./socketClient');
 const { SCRIPT_ROOT, bundleScript, validateEntryPath } = require('./bundler');
 
 const DEFAULT_HOST = process.env.ARC_HOST || '127.0.0.1';
@@ -72,6 +72,27 @@ function usage() {
 function fail(message) {
   console.error(JSON.stringify({ ok: false, error: { code: 'INVALID_ARGUMENT', message } }));
   process.exitCode = 2;
+}
+
+function transportFailure(error, { move = false } = {}) {
+  const code = error && error.code ? error.code : 'bridge_disconnected';
+  const result = {
+    ok: false,
+    status: code === 'bridge_timeout' ? 'indeterminate' : 'failed',
+    outcome: move ? code : undefined,
+    safeToAct: false,
+    error: { code: String(code).toUpperCase(), message: error.message },
+    transport: error && error.transport ? error.transport : undefined,
+  };
+  if (!move) delete result.outcome;
+  if (!result.transport) delete result.transport;
+  console.log(JSON.stringify(result));
+  process.exitCode = 1;
+}
+
+function commandFailure(error, options) {
+  if (error instanceof BridgeTransportError) transportFailure(error, options);
+  else fail(error.message);
 }
 
 function parseInteger(value, name, { min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER } = {}) {
@@ -158,7 +179,7 @@ function parseRunArgs(args) {
 async function run(args) {
   const parsed = parseRunArgs(args); if (parsed.error) return fail(parsed.error);
   try { const source = await bundleScript(parsed); const response = await runSource(source, parsed); console.log(JSON.stringify(decodeResponse(response))); if (!response.ok) process.exitCode = 1; }
-  catch (error) { console.error(JSON.stringify({ ok: false, error: { code: 'BRIDGE_ERROR', message: error.message } })); process.exitCode = 1; }
+  catch (error) { commandFailure(error); }
 }
 
 function parseFields(args) {
@@ -189,7 +210,7 @@ JSON.stringify(result);`;
 async function observe(args) {
   try {
     return await request(observationSource(parseFields(args)), DEFAULT_TIMEOUT_MS, { decorate: args.length === 0 ? addWikiOverview : undefined });
-  } catch (error) { fail(error.message); }
+  } catch (error) { commandFailure(error); }
 }
 
 async function entities(args) {
@@ -202,7 +223,7 @@ async function mapProbe(args) {
     let radius = 3;
     if (args.length) { if (args.length !== 2 || args[0] !== '--radius') throw new Error('usage: map [--radius <0-3>]'); radius = parseInteger(args[1], 'radius', { min: 0, max: 3 }); }
     return await request(`var p=walkability.around(${radius},false),x=controller.currentX(),y=controller.currentY(),tiles=[],grid=[];for(var r=${radius};r>=-${radius};r--){var line='';for(var c=-${radius};c<=${radius};c++){var q=p.get((r+${radius})*(2*${radius}+1)+(c+${radius}));var here=c===0&&r===0;line+=here?'@':(q.isReachable()?'.':'#');tiles.push({x:Number(q.getX()),y:Number(q.getY()),reachable:Boolean(q.isReachable())});}grid.push(line);}JSON.stringify({origin:[Number(x),Number(y)],radius:${radius},north:'up',legend:'@ player, . reachable, # blocked',grid:grid,tiles:tiles});`);
-  } catch (error) { fail(error.message); }
+  } catch (error) { commandFailure(error); }
 }
 
 async function pathProbe(args) {
@@ -210,7 +231,7 @@ async function pathProbe(args) {
     if (args.length !== 2) throw new Error('usage: path <x> <y>');
     const x = parseInteger(args[0], 'x'); const y = parseInteger(args[1], 'y');
     return await request(`var x=${x},y=${y},from=[Number(controller.currentX()),Number(controller.currentY())],reachable=Boolean(walkability.isReachable(x,y,false));JSON.stringify({status:reachable?'reachable':'no_path',from:from,to:[x,y],distance:Number(controller.getDistanceFromLocalPlayer(x,y)),blockerType:reachable?null:'unknown'});`);
-  } catch (error) { fail(error.message); }
+  } catch (error) { commandFailure(error); }
 }
 
 async function move(args) {
@@ -228,8 +249,7 @@ async function move(args) {
   } catch (error) {
     if (/usage:|unknown move option|must be an integer/.test(error.message)) fail(error.message);
     else {
-      console.error(JSON.stringify({ ok: false, status: 'failed', outcome: 'controller_error', safeToAct: false, error: { code: 'BRIDGE_ERROR', message: error.message } }));
-      process.exitCode = 1;
+      commandFailure(error, { move: true });
     }
   }
 }
@@ -242,7 +262,7 @@ async function talk(args) {
     for (let i = 1; i < args.length; i += 2) { if (args[i] === '--until') until = args[i + 1]; else if (args[i] === '--deadline') deadline = parseInteger(args[i + 1], 'deadline', { min: 1 }); else throw new Error(`unknown talk option: ${args[i]}`); }
     if (until !== 'menu') throw new Error('talk currently supports only --until menu');
     return await request(`var id=${id},started=Date.now(),npc=controller.getNearestNpcById(id,false),startedTalk=npc!==null&&Boolean(controller.talkToNpc(Number(npc.serverIndex)));while(startedTalk&&!controller.isInOptionMenu()&&Date.now()-started<${deadline})controller.sleep(100);var options=[],count=controller.getOptionMenuCount();for(var i=0;i<count;i++)options.push({index:i,text:String(controller.getOptionsMenuText(i))});JSON.stringify({dialogue:{npcId:id,status:controller.isInOptionMenu()?'waiting_for_choice':(startedTalk?'completed':'not_started'),elapsedMs:Date.now()-started,menu:{open:Boolean(controller.isInOptionMenu()),options:options}}});`, Math.max(DEFAULT_TIMEOUT_MS, deadline + 1000));
-  } catch (error) { fail(error.message); }
+  } catch (error) { commandFailure(error); }
 }
 
 async function choose(args) {
@@ -251,13 +271,13 @@ async function choose(args) {
     for (let i = 0; i < args.length; i += 2) { if (args[i] === '--contains') contains = args[i + 1]; else if (args[i] === '--index') index = parseInteger(args[i + 1], 'index', { min: 0 }); else throw new Error(`unknown choose option: ${args[i]}`); }
     if ((contains === undefined) === (index === undefined)) throw new Error('choose requires exactly one of --contains or --index');
     return await request(`var wanted=${JSON.stringify(contains || '')}.toLowerCase(),selected=${index === undefined ? '-1' : index},options=[],count=controller.getOptionMenuCount();for(var i=0;i<count;i++){var text=String(controller.getOptionsMenuText(i));options.push({index:i,text:text});if(selected===-1&&text.toLowerCase().indexOf(wanted)!==-1)selected=i;}var open=Boolean(controller.isInOptionMenu());if(open&&selected>=0&&selected<count)controller.optionAnswer(selected);JSON.stringify({choice:{status:open&&selected>=0&&selected<count?'selected':(open?'not_found':'no_menu'),selectedIndex:selected,options:options}});`);
-  } catch (error) { fail(error.message); }
+  } catch (error) { commandFailure(error); }
 }
 
 async function events(args) {
   try { let cursor = 0; if (args.length) { if (args.length !== 2 || args[0] !== '--since') throw new Error('usage: events [--since <cursor>]'); cursor = parseInteger(args[1], 'cursor', { min: 0 }); }
     return await request(`var cursor=${cursor},list=messages.since(cursor),events=[];for(var i=0;i<list.size();i++){var e=list.get(i);events.push({sequence:Number(e.getSequence()),timestamp:Number(e.getTimestamp()),type:String(e.getType()),sender:e.getSender()===null?null:String(e.getSender()),text:e.getText()===null?null:String(e.getText())});}JSON.stringify({cursor:cursor,nextCursor:Number(messages.cursor()),count:events.length,events:events});`);
-  } catch (error) { fail(error.message); }
+  } catch (error) { commandFailure(error); }
 }
 
 async function main(args) {

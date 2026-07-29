@@ -6,6 +6,10 @@ var ENTITY_RADIUS = 5;
 var DEFAULT_QUIET_MS = 2000;
 var DEFAULT_SETTLE_DEADLINE_MS = 30000;
 
+function stage(name) {
+  if (typeof bridge !== 'undefined' && bridge && bridge.stage) bridge.stage(name);
+}
+
 function distanceTo(target) {
   return Number(controller.getDistanceFromLocalPlayer(target.x, target.y));
 }
@@ -177,29 +181,36 @@ function moveAndObserve(options) {
   var before;
   var cursor = safeCall(observationErrors, 'before.eventCursor', null, function () { return Number(messages.cursor()); });
   try {
+    stage('before_capture_started');
     before = readPosition();
     var beforeInventory = safeCall(observationErrors, 'before.inventory', { slots: null, items: [] }, inventorySnapshot);
     var beforeQuests = safeCall(observationErrors, 'before.quests', [], questSnapshot);
     var initialDistance = distanceTo(target);
+    stage('before_capture_finished');
     var controllerReturned = false;
     var atControllerReturn = before;
     var atControllerReturnDistance = initialDistance;
     var atControllerReturnWalkingSample = safeCall(observationErrors, 'controllerReturn.walking', null, function () { return Boolean(controller.isCurrentlyWalking()); });
     var walkStarted = Date.now();
     if (initialDistance > target.radius) {
+      stage('walk_started');
       controller.walkTo(target.x, target.y, target.radius, true, true);
+      stage('walk_returned');
       controllerReturned = true;
       atControllerReturn = readPosition();
       atControllerReturnDistance = distanceTo(target);
       atControllerReturnWalkingSample = Boolean(controller.isCurrentlyWalking());
     }
     var walkMs = Date.now() - walkStarted;
+    stage('settlement_started');
     var settlement = waitForStablePosition({ quietMs: DEFAULT_QUIET_MS, deadlineMs: DEFAULT_SETTLE_DEADLINE_MS });
+    stage('settlement_finished');
     var afterPosition = settlement.position;
     var observation = null;
     var integrityPosition = afterPosition;
     var integrityPassed = false;
     var observationMsStarted = Date.now();
+    stage('observation_started');
     for (var attempt = 0; attempt < 2; attempt += 1) {
       observation = {
         scene: captureScene(afterPosition, observationErrors),
@@ -223,6 +234,8 @@ function moveAndObserve(options) {
     var running = Boolean(controller.isRunning());
     var inCombat = Boolean(controller.isInCombat());
     var classification = classifyMove({ initialDistance: initialDistance, finalDistance: finalDistance, radius: target.radius, settled: settlement.settled, loggedIn: loggedIn, running: running, inCombat: inCombat, integrityPassed: integrityPassed });
+    stage('observation_finished');
+    stage('result_classified');
     var finalInventory = observation.inventory;
     var finalQuests = observation.quests;
     var finalPosition = integrityPosition;
