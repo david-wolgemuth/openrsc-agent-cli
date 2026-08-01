@@ -1,9 +1,16 @@
 # openrsc-agent-cli
 
 An agent-facing command-line interface for controlling and inspecting a live
-[OpenRSC](https://github.com/Open-RSC) client through [IdleRSC]. It sends small
-JavaScript programs to a bridge running inside IdleRSC, then returns structured
-results to the calling agent or shell.
+[OpenRSC](https://github.com/Open-RSC) client through
+[IdleRSC](https://github.com/Open-RSC/IdleRSC). It sends small JavaScript
+programs to a bridge running inside IdleRSC, then returns structured results to
+the calling agent or shell.
+
+This project is **building on the shoulders of giants**: OpenRSC provides the
+game-world ecosystem, while IdleRSC provides the injected client runtime and
+IdleScript controller API. Both are upstream dependencies; this repository
+adds a bridge and an agent-friendly CLI around them, without replacing or
+modifying their source.
 
 <img width="1542" height="817" alt="Screenshot 2026-08-01 102633" src="https://github.com/user-attachments/assets/70b5fe22-3660-4281-a228-ab0a8118a4b5" />
 
