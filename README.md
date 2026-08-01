@@ -121,8 +121,9 @@ current command summary.
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph startup[Startup and configuration]
+        direction LR
         Env[".env\ncredentials, server, script"]
         Make["make run"]
         IdleRSC["IdleRSC client\nJava 8 + Nashorn"]
@@ -130,6 +131,7 @@ flowchart LR
     end
 
     subgraph client[Agent-facing CLI process]
+        direction LR
         Caller["Agent or shell"]
         CLI["./irsc\nsemantic commands or run"]
         Bundle["Read script and bundle\nlocal ES modules when needed"]
@@ -138,6 +140,7 @@ flowchart LR
     end
 
     subgraph bridge[BridgeScript inside IdleRSC]
+        direction LR
         Entry["BridgeScript\nIdleScript entry point"]
         Server["ScriptServer\n127.0.0.1:8765"]
         Queue["Single blocking request\nworker.start(); worker.join()"]
@@ -147,12 +150,14 @@ flowchart LR
     end
 
     subgraph game[Live client state]
+        direction LR
         API["IdleRSC controller APIs\nmovement, entities, menus, inventory"]
         World["OpenRSC game world"]
         API <--> World
     end
 
     subgraph events[Message capture]
+        direction LR
         Interrupts["IdleScript interrupts\nQUEST, CHAT, GAME, PRIVATE, TRADE"]
         Buffer["MessageBuffer\nbounded in-memory event stream"]
         JSONL["logs/idlersc-bridge-messages-*.jsonl"]
@@ -167,6 +172,18 @@ flowchart LR
     Server -->|"TCP response"| CLI
     CLI -->|"./irsc events"| Buffer
     CLI -->|"./irsc logs"| JSONL
+
+    classDef startup fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:2px;
+    classDef cli fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px;
+    classDef bridge fill:#7e22ce,stroke:#d8b4fe,color:#ffffff,stroke-width:2px;
+    classDef game fill:#b45309,stroke:#fde68a,color:#ffffff,stroke-width:2px;
+    classDef events fill:#be123c,stroke:#fda4af,color:#ffffff,stroke-width:2px;
+
+    class Env,Make,IdleRSC startup;
+    class Caller,CLI,Bundle,Frame cli;
+    class Entry,Server,Queue,Worker,Bindings bridge;
+    class API,World game;
+    class Interrupts,Buffer,JSONL events;
 ```
 
 `BridgeScript` is loaded by IdleRSC as a native `IdleScript`. It starts a
