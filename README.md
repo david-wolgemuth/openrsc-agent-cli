@@ -5,6 +5,10 @@ An agent-facing command-line interface for controlling and inspecting a live
 JavaScript programs to a bridge running inside IdleRSC, then returns structured
 results to the calling agent or shell.
 
+<img width="1542" height="817" alt="Screenshot 2026-08-01 102633" src="https://github.com/user-attachments/assets/70b5fe22-3660-4281-a228-ab0a8118a4b5" />
+
+<img width="1432" height="696" alt="Screenshot 2026-08-01 102036" src="https://github.com/user-attachments/assets/68d595e5-6a0e-4c8a-88fe-432021f4147f" />
+
 ## CLI examples
 
 The default command returns a compact live observation. Use semantic commands
