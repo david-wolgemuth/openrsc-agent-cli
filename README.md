@@ -21,12 +21,49 @@ for ordinary inspection and interaction:
 
 `move` returns an explicit terminal outcome, waits for positional settlement,
 and includes the resulting scene; it does not require a follow-up shell sleep.
-`talk npc:<id> --until menu` and `choose
---contains <text>` provide the same bounded interaction pattern for an
-observed option menu.
+`talk npc:<id> --until menu` and `choose --contains <text>` provide the same
+bounded interaction pattern for an observed option menu.
 
-Run a one-off JavaScript expression in the live client when the semantic
-commands are insufficient:
+### Gameplay workflow
+
+Use the semantic `irsc` commands for ordinary gameplay. They keep the action,
+its outcome, and the observed scene together, which makes it possible to act
+without relying on prewritten quest automation.
+
+```sh
+# Establish the live position and nearby NPC IDs.
+./irsc inspect
+./irsc entities --type npc
+
+# Check a destination before moving, then make a verified move.
+./irsc path 120 708
+./irsc move 120 708 --radius 2
+
+# Start an observed NPC conversation and inspect its choice menu.
+./irsc talk npc:15 --until menu --deadline 8000
+./irsc observe --fields player,npcs,menu
+./irsc choose --contains 'tell me what the problem is'
+
+# Read the resulting quest dialogue and continue from what it says.
+./irsc logs --tail 30 --type QUEST
+```
+
+`talk` waits until a choice menu appears or its deadline expires. A result of
+`completed` means the conversation progressed without a pending choice; use
+`logs --type QUEST` to read its dialogue before deciding the next action.
+`choose` only selects an option that is currently present in the observed
+menu. Prefer `--contains` to a fixed option index when wording is known.
+
+For movement, treat `succeeded`/`reached` as permission to take the next step.
+If `move` returns `path_no_progress`, do not repeat the same long move: inspect
+the local map with `./irsc map --radius 2` or `3`, take a short reachable leg,
+and verify the new position before continuing. `path` is a reachability probe,
+not a route executor, so a reachable result still benefits from bounded moves
+around doors, rivers, and map boundaries.
+
+Run a one-off JavaScript expression in the live client only when the semantic
+commands are insufficient (for example, when developing or diagnosing the
+bridge):
 
 ```sh
 ./irsc run -c 'JSON.stringify({loggedIn: controller.isLoggedIn(), x: controller.currentX(), y: controller.currentY()})'
@@ -138,10 +175,10 @@ the Nashorn JavaScript engine supplied by that environment.
 ## Current scope
 
 The current implementation supports one blocking script request at a time,
-inline or file-based JavaScript, local ES module bundling, live inspection,
-reachability probes, and durable JSONL message logs. The CLI timeout only
-limits the client request; it does not yet guarantee cancellation of a Java
-worker that is still running.
+semantic observation, navigation, dialogue, and choice commands, inline or
+file-based JavaScript, local ES module bundling, reachability probes, and
+durable JSONL message logs. The CLI timeout only limits the client request; it
+does not yet guarantee cancellation of a Java worker that is still running.
 
 This repository owns the bridge and CLI code. Do not copy or run the
 pre-written quest automation in the upstream IdleRSC source; gameplay behavior
