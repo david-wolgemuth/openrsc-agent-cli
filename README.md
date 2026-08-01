@@ -120,13 +120,53 @@ current command summary.
 
 ## How it works
 
-```text
-agent or shell
-    -> ./irsc
-    -> local TCP connection
-    -> BridgeScript inside IdleRSC
-    -> JavaScript worker with controller bindings
-    -> live OpenRSC/IdleRSC client
+```mermaid
+flowchart LR
+    subgraph startup[Startup and configuration]
+        Env[".env\ncredentials, server, script"]
+        Make["make run"]
+        IdleRSC["IdleRSC client\nJava 8 + Nashorn"]
+        Env --> Make --> IdleRSC
+    end
+
+    subgraph client[Agent-facing CLI process]
+        Caller["Agent or shell"]
+        CLI["./irsc\nsemantic commands or run"]
+        Bundle["Read script and bundle\nlocal ES modules when needed"]
+        Frame["Newline-delimited JSON\nrun request with base64 source"]
+        Caller --> CLI --> Bundle --> Frame
+    end
+
+    subgraph bridge[BridgeScript inside IdleRSC]
+        Entry["BridgeScript\nIdleScript entry point"]
+        Server["ScriptServer\n127.0.0.1:8765"]
+        Queue["Single blocking request\nworker.start(); worker.join()"]
+        Worker["ScriptWorker\nNashorn JavaScript evaluation"]
+        Bindings["Live bindings\ncontroller, botController, walkability,\ndialogue/messages, console"]
+        Entry --> Server --> Queue --> Worker --> Bindings
+    end
+
+    subgraph game[Live client state]
+        API["IdleRSC controller APIs\nmovement, entities, menus, inventory"]
+        World["OpenRSC game world"]
+        API <--> World
+    end
+
+    subgraph events[Message capture]
+        Interrupts["IdleScript interrupts\nQUEST, CHAT, GAME, PRIVATE, TRADE"]
+        Buffer["MessageBuffer\nbounded in-memory event stream"]
+        JSONL["logs/idlersc-bridge-messages-*.jsonl"]
+        Interrupts --> Buffer --> JSONL
+    end
+
+    IdleRSC --> Entry
+    Frame -->|"TCP loopback"| Server
+    Bindings <--> API
+    World --> Interrupts
+    Worker -->|"JSON result or error"| Server
+    Server -->|"TCP response"| CLI
+    CLI -->|"./irsc events"| Buffer
+    CLI -->|"./irsc logs"| JSONL
 ```
 
 `BridgeScript` is loaded by IdleRSC as a native `IdleScript`. It starts a
